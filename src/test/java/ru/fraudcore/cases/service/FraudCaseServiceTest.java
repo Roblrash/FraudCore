@@ -1,0 +1,105 @@
+package ru.fraudcore.cases.service;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import ru.fraudcore.audit.service.AuditService;
+import ru.fraudcore.cases.dto.FraudCaseDecisionRequest;
+import ru.fraudcore.cases.entity.FraudCase;
+import ru.fraudcore.cases.entity.FraudCaseDecision;
+import ru.fraudcore.cases.entity.FraudCaseStatus;
+import ru.fraudcore.cases.mapper.FraudCaseMapper;
+import ru.fraudcore.cases.repository.FraudCaseRepository;
+import ru.fraudcore.kafka.producer.FraudCaseClosedEventProducer;
+import ru.fraudcore.metrics.service.FraudMetricsService;
+import ru.fraudcore.scoring.repository.RiskRuleResultRepository;
+import ru.fraudcore.transactions.entity.RiskLevel;
+import ru.fraudcore.transactions.entity.Transaction;
+import ru.fraudcore.transactions.entity.TransactionStatus;
+import ru.fraudcore.transactions.repository.TransactionRepository;
+import ru.fraudcore.users.entity.User;
+import ru.fraudcore.users.service.UserService;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class FraudCaseServiceTest {
+
+    @Mock
+    private FraudCaseRepository fraudCaseRepository;
+    @Mock
+    private FraudCaseMapper fraudCaseMapper;
+    @Mock
+    private UserService userService;
+    @Mock
+    private TransactionRepository transactionRepository;
+    @Mock
+    private AuditService auditService;
+    @Mock
+    private FraudCaseClosedEventProducer fraudCaseClosedEventProducer;
+    @Mock
+    private RiskRuleResultRepository riskRuleResultRepository;
+    @Mock
+    private FraudMetricsService metricsService;
+
+    @Test
+    void shouldCreateCaseForBlockedTransaction() {
+        FraudCaseService service = buildService();
+        Transaction tx = Transaction.builder().id(1L).status(TransactionStatus.TEMPORARILY_BLOCKED).build();
+
+        when(fraudCaseRepository.existsByTransactionId(1L)).thenReturn(false);
+        when(fraudCaseRepository.save(any(FraudCase.class))).thenAnswer(inv -> {
+            FraudCase c = inv.getArgument(0);
+            c.setId(10L);
+            return c;
+        });
+
+        FraudCase result = service.createForBlockedTransaction(tx, 70, RiskLevel.HIGH);
+
+        assertThat(result.getId()).isEqualTo(10L);
+        verify(auditService).log(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldCloseCaseAndUpdateTransactionStatus() {
+        FraudCaseService service = buildService();
+
+        User analyst = User.builder().id(2L).email("analyst@test.com").build();
+        Transaction tx = Transaction.builder().id(1L).status(TransactionStatus.TEMPORARILY_BLOCKED).build();
+        FraudCase fraudCase = FraudCase.builder()
+                .id(100L)
+                .status(FraudCaseStatus.IN_PROGRESS)
+                .assignedAnalyst(analyst)
+                .assignedAt(LocalDateTime.now().minusMinutes(5))
+                .transaction(tx)
+                .build();
+
+        when(userService.getCurrentUserEntity()).thenReturn(analyst);
+        when(fraudCaseRepository.findById(100L)).thenReturn(Optional.of(fraudCase));
+        when(fraudCaseRepository.save(any(FraudCase.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        var response = service.makeDecision(100L, new FraudCaseDecisionRequest(FraudCaseDecision.DECLINE_TRANSACTION, "fraud"));
+
+        assertThat(response.transactionStatus()).isEqualTo(TransactionStatus.DECLINED_BY_ANALYST);
+        verify(fraudCaseClosedEventProducer).publish(any());
+    }
+
+    private FraudCaseService buildService() {
+        return new FraudCaseService(
+                fraudCaseRepository,
+                fraudCaseMapper,
+                userService,
+                transactionRepository,
+                auditService,
+                fraudCaseClosedEventProducer,
+                riskRuleResultRepository,
+                metricsService
+        );
+    }
+}
