@@ -5,10 +5,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 import ru.fraudcore.cases.repository.FraudCaseRepository;
 import ru.fraudcore.common.exception.ConflictException;
@@ -30,13 +30,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class FraudCoreIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16")
+    static PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:18.4")
             .withDatabaseName("fraudcore")
             .withUsername("fraudcore")
             .withPassword("fraudcore");
 
     @Container
-    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("apache/kafka-native:3.8.0"));
+    static KafkaContainer kafka = new KafkaContainer(DockerImageName.parse("apache/kafka:4.3.0"));
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -102,7 +102,7 @@ class FraudCoreIntegrationTest {
         assertThat(fraudCaseRepository.existsByTransactionId(highId)).isTrue();
         assertThat(riskRuleResultRepository.findAllByTransactionId(highId)).isNotEmpty();
 
-        var page = transactionService.findAll("client-2", null, null, null, null, null,
+        var page = transactionService.findAll("client-2", null, null, null, null, null, null,
                 null, null, "createdAt", "desc", 0, 10);
         assertThat(page.content()).hasSize(1);
     }

@@ -6,7 +6,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.fraudcore.cases.entity.FraudCaseStatus;
 import ru.fraudcore.cases.repository.FraudCaseRepository;
+import ru.fraudcore.dashboard.dto.RiskLevelCountDto;
+import ru.fraudcore.dashboard.dto.TransactionTypeCountDto;
+import ru.fraudcore.transactions.entity.RiskLevel;
 import ru.fraudcore.transactions.entity.TransactionStatus;
+import ru.fraudcore.transactions.entity.TransactionType;
 import ru.fraudcore.transactions.repository.TransactionRepository;
 
 import java.math.BigDecimal;
@@ -35,8 +39,8 @@ class DashboardServiceTest {
         when(fraudCaseRepository.countByStatus(FraudCaseStatus.CLOSED)).thenReturn(15L);
         when(transactionRepository.averageRiskScore()).thenReturn(42.5);
         when(transactionRepository.sumAmountByStatus(TransactionStatus.TEMPORARILY_BLOCKED)).thenReturn(new BigDecimal("1000"));
-        when(fraudCaseRepository.countByRiskLevelGroup()).thenReturn(List.of(new Object[]{"HIGH", 15L}));
-        when(transactionRepository.countByType()).thenReturn(List.of(new Object[]{"TRANSFER", 80L}));
+        when(fraudCaseRepository.countByRiskLevelGroup()).thenReturn(List.of(new RiskLevelCountDto(RiskLevel.HIGH, 15L)));
+        when(transactionRepository.countByType()).thenReturn(List.of(new TransactionTypeCountDto(TransactionType.TRANSFER, 80L)));
 
         var response = service.getDashboard();
 

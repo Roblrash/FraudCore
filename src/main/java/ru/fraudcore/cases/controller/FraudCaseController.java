@@ -1,5 +1,6 @@
 package ru.fraudcore.cases.controller;
 
+import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -29,7 +30,21 @@ public class FraudCaseController {
             @RequestParam(required = false) Boolean assignedToMe,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateTo,
+            @Parameter(
+                    description = "Поле сортировки. riskLevel сортируется по числовому riskScore",
+                    example = "createdAt",
+                    schema = @io.swagger.v3.oas.annotations.media.Schema(
+                            allowableValues = {"createdAt", "riskScore", "riskLevel"}
+                    )
+            )
             @RequestParam(defaultValue = "createdAt") String sortBy,
+            @Parameter(
+                    description = "Направление сортировки",
+                    example = "desc",
+                    schema = @io.swagger.v3.oas.annotations.media.Schema(
+                            allowableValues = {"asc", "desc"}
+                    )
+            )
             @RequestParam(defaultValue = "desc") String sortDirection,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size

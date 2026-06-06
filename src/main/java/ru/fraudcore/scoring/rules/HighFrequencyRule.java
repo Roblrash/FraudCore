@@ -18,7 +18,11 @@ public class HighFrequencyRule implements FraudRule {
     @Override
     public Optional<RiskRuleResultDraft> evaluate(Transaction transaction) {
         LocalDateTime tenMinutesAgo = transaction.getCreatedAt().minusMinutes(10);
-        long count = transactionRepository.countByClientIdAndCreatedAtAfter(transaction.getClientId(), tenMinutesAgo);
+        long count = transactionRepository.countByClientIdAndCreatedAtBetween(
+                transaction.getClientId(),
+                tenMinutesAgo,
+                transaction.getCreatedAt()
+        );
 
         if (count > 5) {
             return Optional.of(new RiskRuleResultDraft(

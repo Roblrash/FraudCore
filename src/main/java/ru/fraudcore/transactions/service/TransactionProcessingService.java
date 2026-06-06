@@ -8,6 +8,7 @@ import ru.fraudcore.audit.entity.AuditAction;
 import ru.fraudcore.audit.service.AuditService;
 import ru.fraudcore.cases.entity.FraudCase;
 import ru.fraudcore.cases.service.FraudCaseService;
+import ru.fraudcore.common.transaction.AfterCommitExecutor;
 import ru.fraudcore.kafka.event.FraudCaseCreatedEvent;
 import ru.fraudcore.kafka.event.TransactionCreatedEvent;
 import ru.fraudcore.kafka.event.TransactionScoredEvent;
@@ -24,6 +25,7 @@ import ru.fraudcore.transactions.repository.TransactionRepository;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Service
@@ -38,6 +40,7 @@ public class TransactionProcessingService {
     private final FraudCaseCreatedEventProducer fraudCaseCreatedEventProducer;
     private final AuditService auditService;
     private final FraudMetricsService metricsService;
+    private final AfterCommitExecutor afterCommitExecutor;
 
     @Transactional
     public void processTransactionCreatedEvent(TransactionCreatedEvent event) {
@@ -48,7 +51,7 @@ public class TransactionProcessingService {
         if (transaction == null) {
             log.error("Транзакция {} из события не найдена", event.transactionId());
             metricsService.incrementKafkaConsumerErrors();
-            return;
+            throw new IllegalStateException("Транзакция из события не найдена: " + event.transactionId());
         }
 
         if (transaction.getStatus() != TransactionStatus.PENDING) {
@@ -94,20 +97,53 @@ public class TransactionProcessingService {
                 transaction.getStatus().name(),
                 LocalDateTime.now()
         );
-        transactionScoredEventProducer.publish(scoredEvent);
-        auditService.log(null, AuditAction.KAFKA_EVENT_PUBLISHED, "TRANSACTION", transaction.getId(), "Опубликовано в topic=transaction.scored");
+        Long transactionId = transaction.getId();
+        afterCommitExecutor.execute(() -> handlePublication(
+                transactionScoredEventProducer.publish(scoredEvent),
+                "TransactionScoredEvent",
+                "TRANSACTION",
+                transactionId,
+                "Опубликовано в topic=transaction.scored"
+        ));
 
         if (createdCase != null) {
             FraudCaseCreatedEvent caseCreatedEvent = new FraudCaseCreatedEvent(
                     UUID.randomUUID(),
                     createdCase.getId(),
-                    transaction.getId(),
+                    transactionId,
                     createdCase.getRiskScore(),
                     createdCase.getRiskLevel().name(),
                     LocalDateTime.now()
             );
-            fraudCaseCreatedEventProducer.publish(caseCreatedEvent);
-            auditService.log(null, AuditAction.KAFKA_EVENT_PUBLISHED, "CASE", createdCase.getId(), "Опубликовано в topic=fraud.case.created");
+            Long caseId = createdCase.getId();
+            afterCommitExecutor.execute(() -> handlePublication(
+                    fraudCaseCreatedEventProducer.publish(caseCreatedEvent),
+                    "FraudCaseCreatedEvent",
+                    "CASE",
+                    caseId,
+                    "Опубликовано в topic=fraud.case.created"
+            ));
         }
+    }
+
+    private void handlePublication(
+            CompletableFuture<?> publication,
+            String eventName,
+            String entityType,
+            Long entityId,
+            String auditDetails
+    ) {
+        publication.whenComplete((result, publishError) -> {
+            if (publishError != null) {
+                log.error("Не удалось опубликовать {} для {}Id={}", eventName, entityType.toLowerCase(), entityId, publishError);
+                return;
+            }
+            try {
+                auditService.log(null, AuditAction.KAFKA_EVENT_PUBLISHED, entityType, entityId, auditDetails);
+            } catch (Exception auditError) {
+                log.error("{} опубликовано, но не удалось записать AuditLog для {}Id={}",
+                        eventName, entityType.toLowerCase(), entityId, auditError);
+            }
+        });
     }
 }

@@ -6,6 +6,8 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.fraudcore.cases.entity.FraudCaseStatus;
 import ru.fraudcore.cases.repository.FraudCaseRepository;
 import ru.fraudcore.dashboard.dto.DashboardResponse;
+import ru.fraudcore.dashboard.dto.RiskLevelCountDto;
+import ru.fraudcore.dashboard.dto.TransactionTypeCountDto;
 import ru.fraudcore.transactions.entity.TransactionStatus;
 import ru.fraudcore.transactions.repository.TransactionRepository;
 
@@ -39,9 +41,9 @@ public class DashboardService {
                 .doubleValue();
 
         Map<String, Long> casesByRiskLevel = fraudCaseRepository.countByRiskLevelGroup().stream()
-                .collect(Collectors.toMap(r -> String.valueOf(r[0]), r -> (Long) r[1]));
+                .collect(Collectors.toMap(r -> r.riskLevel().name(), RiskLevelCountDto::count));
         Map<String, Long> transactionsByType = transactionRepository.countByType().stream()
-                .collect(Collectors.toMap(r -> String.valueOf(r[0]), r -> (Long) r[1]));
+                .collect(Collectors.toMap(r -> r.type().name(), TransactionTypeCountDto::count));
 
         return new DashboardResponse(
                 totalTransactions,

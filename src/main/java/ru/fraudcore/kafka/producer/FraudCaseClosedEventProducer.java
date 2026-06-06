@@ -3,10 +3,13 @@ package ru.fraudcore.kafka.producer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Component;
 import ru.fraudcore.config.KafkaTopicsProperties;
 import ru.fraudcore.kafka.event.FraudCaseClosedEvent;
 import ru.fraudcore.metrics.service.FraudMetricsService;
+
+import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Component
@@ -17,9 +20,13 @@ public class FraudCaseClosedEventProducer {
     private final KafkaTopicsProperties topics;
     private final FraudMetricsService metricsService;
 
-    public void publish(FraudCaseClosedEvent event) {
-        kafkaTemplate.send(topics.getFraudCaseClosed(), event.caseId().toString(), event);
-        metricsService.incrementKafkaPublished();
-        log.info("Опубликовано событие FraudCaseClosedEvent для caseId={}", event.caseId());
+    public CompletableFuture<SendResult<String, Object>> publish(FraudCaseClosedEvent event) {
+        CompletableFuture<SendResult<String, Object>> future =
+                kafkaTemplate.send(topics.getFraudCaseClosed(), event.caseId().toString(), event);
+        future.thenAccept(result -> {
+            metricsService.incrementKafkaPublished();
+            log.info("Опубликовано событие FraudCaseClosedEvent для caseId={}", event.caseId());
+        });
+        return future;
     }
 }

@@ -5,7 +5,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import ru.fraudcore.cases.entity.FraudCase;
 import ru.fraudcore.cases.entity.FraudCaseStatus;
-import ru.fraudcore.transactions.entity.RiskLevel;
+import ru.fraudcore.dashboard.dto.RiskLevelCountDto;
 
 import java.util.List;
 
@@ -15,8 +15,10 @@ public interface FraudCaseRepository extends JpaRepository<FraudCase, Long>, Jpa
 
     long countByStatus(FraudCaseStatus status);
 
-    long countByRiskLevel(RiskLevel riskLevel);
-
-    @Query("select f.riskLevel, count(f.id) from FraudCase f group by f.riskLevel")
-    List<Object[]> countByRiskLevelGroup();
+    @Query("""
+            select new ru.fraudcore.dashboard.dto.RiskLevelCountDto(f.riskLevel, count(f.id))
+            from FraudCase f
+            group by f.riskLevel
+            """)
+    List<RiskLevelCountDto> countByRiskLevelGroup();
 }

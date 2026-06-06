@@ -1,6 +1,7 @@
 package ru.fraudcore.cases.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -20,10 +21,12 @@ import ru.fraudcore.cases.entity.FraudCaseStatus;
 import ru.fraudcore.cases.mapper.FraudCaseMapper;
 import ru.fraudcore.cases.repository.FraudCaseRepository;
 import ru.fraudcore.cases.repository.FraudCaseSpecifications;
+import ru.fraudcore.common.exception.BadRequestException;
 import ru.fraudcore.common.exception.ConflictException;
 import ru.fraudcore.common.exception.ForbiddenException;
 import ru.fraudcore.common.exception.NotFoundException;
 import ru.fraudcore.common.response.PageResponse;
+import ru.fraudcore.common.transaction.AfterCommitExecutor;
 import ru.fraudcore.kafka.event.FraudCaseClosedEvent;
 import ru.fraudcore.kafka.producer.FraudCaseClosedEventProducer;
 import ru.fraudcore.metrics.service.FraudMetricsService;
@@ -38,11 +41,16 @@ import ru.fraudcore.users.service.UserService;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FraudCaseService {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "riskScore", "riskLevel");
 
     private final FraudCaseRepository fraudCaseRepository;
     private final FraudCaseMapper fraudCaseMapper;
@@ -52,6 +60,7 @@ public class FraudCaseService {
     private final FraudCaseClosedEventProducer fraudCaseClosedEventProducer;
     private final RiskRuleResultRepository riskRuleResultRepository;
     private final FraudMetricsService metricsService;
+    private final AfterCommitExecutor afterCommitExecutor;
 
     @Transactional
     public FraudCase createForBlockedTransaction(Transaction transaction, Integer riskScore, RiskLevel riskLevel) {
@@ -89,8 +98,8 @@ public class FraudCaseService {
     ) {
         Long analystId = Boolean.TRUE.equals(assignedToMe) ? userService.getCurrentUserEntity().getId() : null;
 
-        Sort sort = Sort.by("desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC,
-                sortBy == null || sortBy.isBlank() ? "createdAt" : sortBy);
+        String resolvedSortBy = resolveSortBy(sortBy);
+        Sort sort = Sort.by("desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC, resolvedSortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Specification<FraudCase> spec = Specification.where(FraudCaseSpecifications.statusEquals(status))
@@ -178,8 +187,13 @@ public class FraudCaseService {
                 transaction.getStatus().name(),
                 saved.getClosedAt()
         );
-        fraudCaseClosedEventProducer.publish(event);
-        auditService.log(analyst.getId(), AuditAction.KAFKA_EVENT_PUBLISHED, "CASE", saved.getId(), "Опубликовано в topic=fraud.case.closed");
+        Long analystId = analyst.getId();
+        Long caseIdToPublish = saved.getId();
+        afterCommitExecutor.execute(() -> handlePublication(
+                fraudCaseClosedEventProducer.publish(event),
+                analystId,
+                caseIdToPublish
+        ));
 
         metricsService.incrementCasesClosed();
         if (saved.getAssignedAt() != null) {
@@ -215,5 +229,36 @@ public class FraudCaseService {
                 fraudCase.getVersion(),
                 reasons
         );
+    }
+
+    private String resolveSortBy(String sortBy) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return "createdAt";
+        }
+        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            throw new BadRequestException("Недопустимое поле сортировки: " + sortBy);
+        }
+        return "riskLevel".equals(sortBy) ? "riskScore" : sortBy;
+    }
+
+    private void handlePublication(CompletableFuture<?> publication, Long analystId, Long caseId) {
+        publication.whenComplete((result, publishError) -> {
+            if (publishError != null) {
+                log.error("Не удалось опубликовать FraudCaseClosedEvent для caseId={}", caseId, publishError);
+                return;
+            }
+            try {
+                auditService.log(
+                        analystId,
+                        AuditAction.KAFKA_EVENT_PUBLISHED,
+                        "CASE",
+                        caseId,
+                        "Опубликовано в topic=fraud.case.closed"
+                );
+            } catch (Exception auditError) {
+                log.error("FraudCaseClosedEvent опубликовано, но не удалось записать AuditLog для caseId={}",
+                        caseId, auditError);
+            }
+        });
     }
 }

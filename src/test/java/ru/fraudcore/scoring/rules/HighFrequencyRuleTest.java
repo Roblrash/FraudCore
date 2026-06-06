@@ -24,7 +24,11 @@ class HighFrequencyRuleTest {
         HighFrequencyRule rule = new HighFrequencyRule(transactionRepository);
         Transaction tx = Transaction.builder().clientId("c1").createdAt(LocalDateTime.now()).build();
 
-        when(transactionRepository.countByClientIdAndCreatedAtAfter(eq("c1"), eq(tx.getCreatedAt().minusMinutes(10)))).thenReturn(6L);
+        when(transactionRepository.countByClientIdAndCreatedAtBetween(
+                eq("c1"),
+                eq(tx.getCreatedAt().minusMinutes(10)),
+                eq(tx.getCreatedAt())
+        )).thenReturn(6L);
 
         assertThat(rule.evaluate(tx)).isPresent();
     }
@@ -34,7 +38,11 @@ class HighFrequencyRuleTest {
         HighFrequencyRule rule = new HighFrequencyRule(transactionRepository);
         Transaction tx = Transaction.builder().clientId("c1").createdAt(LocalDateTime.now()).build();
 
-        when(transactionRepository.countByClientIdAndCreatedAtAfter(eq("c1"), eq(tx.getCreatedAt().minusMinutes(10)))).thenReturn(5L);
+        when(transactionRepository.countByClientIdAndCreatedAtBetween(
+                eq("c1"),
+                eq(tx.getCreatedAt().minusMinutes(10)),
+                eq(tx.getCreatedAt())
+        )).thenReturn(5L);
 
         assertThat(rule.evaluate(tx)).isEmpty();
     }

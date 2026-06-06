@@ -2,8 +2,10 @@ package ru.fraudcore.common.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -15,6 +17,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @RestControllerAdvice
+@Slf4j
+@SuppressWarnings("unused")
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -39,6 +43,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, "Ошибка валидации", request.getRequestURI(), details);
     }
 
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiErrorResponse> handleBadRequest(BadRequestException exception, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, exception.getMessage(), request.getRequestURI(), List.of());
+    }
+
     @ExceptionHandler(NotFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleNotFound(NotFoundException exception, HttpServletRequest request) {
         return build(HttpStatus.NOT_FOUND, exception.getMessage(), request.getRequestURI(), List.of());
@@ -50,6 +59,11 @@ public class GlobalExceptionHandler {
                 ? "Конфликт версий при обновлении данных. Повторите запрос."
                 : exception.getMessage();
         return build(HttpStatus.CONFLICT, message, request.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataIntegrity(HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, "Конфликт данных или нарушение уникальности", request.getRequestURI(), List.of());
     }
 
     @ExceptionHandler({ForbiddenException.class, AccessDeniedException.class})
@@ -66,6 +80,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleOther(Exception exception, HttpServletRequest request) {
+        log.error("Unhandled exception for {}", request.getRequestURI(), exception);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Непредвиденная ошибка сервера", request.getRequestURI(), List.of());
     }
 

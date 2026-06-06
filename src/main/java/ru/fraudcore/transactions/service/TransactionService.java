@@ -1,6 +1,7 @@
 package ru.fraudcore.transactions.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -10,14 +11,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.fraudcore.audit.entity.AuditAction;
 import ru.fraudcore.audit.service.AuditService;
+import ru.fraudcore.common.exception.BadRequestException;
 import ru.fraudcore.common.exception.ConflictException;
 import ru.fraudcore.common.exception.NotFoundException;
 import ru.fraudcore.common.response.PageResponse;
+import ru.fraudcore.common.transaction.AfterCommitExecutor;
 import ru.fraudcore.kafka.event.TransactionCreatedEvent;
 import ru.fraudcore.kafka.producer.TransactionCreatedEventProducer;
 import ru.fraudcore.metrics.service.FraudMetricsService;
 import ru.fraudcore.scoring.repository.RiskRuleResultRepository;
 import ru.fraudcore.transactions.dto.*;
+import ru.fraudcore.transactions.entity.RiskLevel;
 import ru.fraudcore.transactions.entity.Transaction;
 import ru.fraudcore.transactions.entity.TransactionStatus;
 import ru.fraudcore.transactions.entity.TransactionType;
@@ -27,11 +31,16 @@ import ru.fraudcore.transactions.repository.TransactionSpecifications;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TransactionService {
+
+    private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "amount", "riskScore", "riskLevel");
 
     private final TransactionRepository transactionRepository;
     private final TransactionMapper transactionMapper;
@@ -39,6 +48,7 @@ public class TransactionService {
     private final AuditService auditService;
     private final RiskRuleResultRepository riskRuleResultRepository;
     private final FraudMetricsService metricsService;
+    private final AfterCommitExecutor afterCommitExecutor;
 
     @Transactional
     public TransactionAcceptedResponse createTransaction(CreateTransactionRequest request) {
@@ -67,8 +77,10 @@ public class TransactionService {
                 saved.getType().name(),
                 saved.getCreatedAt()
         );
-        transactionCreatedEventProducer.publish(event);
-        auditService.log(null, AuditAction.KAFKA_EVENT_PUBLISHED, "TRANSACTION", saved.getId(), "Опубликовано в topic=transaction.created");
+        afterCommitExecutor.execute(() -> handleTransactionCreatedPublication(
+                transactionCreatedEventProducer.publish(event),
+                saved.getId()
+        ));
 
         return new TransactionAcceptedResponse(
                 saved.getId(),
@@ -97,6 +109,7 @@ public class TransactionService {
             String externalId,
             TransactionStatus status,
             TransactionType type,
+            RiskLevel riskLevel,
             LocalDateTime dateFrom,
             LocalDateTime dateTo,
             BigDecimal minAmount,
@@ -106,14 +119,15 @@ public class TransactionService {
             int page,
             int size
     ) {
-        Sort sort = Sort.by("desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC,
-                sortBy == null || sortBy.isBlank() ? "createdAt" : sortBy);
+        String resolvedSortBy = resolveSortBy(sortBy);
+        Sort sort = Sort.by("desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC, resolvedSortBy);
         Pageable pageable = PageRequest.of(page, size, sort);
 
         Specification<Transaction> spec = Specification.where(TransactionSpecifications.clientIdEquals(clientId))
                 .and(TransactionSpecifications.externalIdEquals(externalId))
                 .and(TransactionSpecifications.statusEquals(status))
                 .and(TransactionSpecifications.typeEquals(type))
+                .and(TransactionSpecifications.riskLevelEquals(riskLevel))
                 .and(TransactionSpecifications.createdAtFrom(dateFrom))
                 .and(TransactionSpecifications.createdAtTo(dateTo))
                 .and(TransactionSpecifications.minAmount(minAmount))
@@ -142,5 +156,40 @@ public class TransactionService {
                 transaction.getRiskLevel(),
                 reasons
         );
+    }
+
+    private String resolveSortBy(String sortBy) {
+        if (sortBy == null || sortBy.isBlank()) {
+            return "createdAt";
+        }
+        if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
+            throw new BadRequestException("Недопустимое поле сортировки: " + sortBy);
+        }
+        return "riskLevel".equals(sortBy) ? "riskScore" : sortBy;
+    }
+
+    private void handleTransactionCreatedPublication(
+            CompletableFuture<?> publication,
+            Long transactionId
+    ) {
+        publication.whenComplete((result, publishError) -> {
+            if (publishError != null) {
+                log.error("Не удалось опубликовать TransactionCreatedEvent для transactionId={}",
+                        transactionId, publishError);
+                return;
+            }
+            try {
+                auditService.log(
+                        null,
+                        AuditAction.KAFKA_EVENT_PUBLISHED,
+                        "TRANSACTION",
+                        transactionId,
+                        "Опубликовано в topic=transaction.created"
+                );
+            } catch (Exception auditError) {
+                log.error("TransactionCreatedEvent опубликовано, но не удалось записать AuditLog для transactionId={}",
+                        transactionId, auditError);
+            }
+        });
     }
 }

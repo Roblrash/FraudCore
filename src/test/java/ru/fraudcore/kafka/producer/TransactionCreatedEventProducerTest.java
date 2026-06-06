@@ -12,6 +12,7 @@ import ru.fraudcore.metrics.service.FraudMetricsService;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.Mockito.*;
 
@@ -31,6 +32,7 @@ class TransactionCreatedEventProducerTest {
         TransactionCreatedEventProducer producer = new TransactionCreatedEventProducer(kafkaTemplate, topics, metricsService);
         TransactionCreatedEvent event = new TransactionCreatedEvent(UUID.randomUUID(), 1L, "tx-1", "c1",
                 new BigDecimal("100"), "RUB", "TRANSFER", LocalDateTime.now());
+        when(kafkaTemplate.send("transaction.created", "1", event)).thenReturn(CompletableFuture.completedFuture(null));
 
         producer.publish(event);
 

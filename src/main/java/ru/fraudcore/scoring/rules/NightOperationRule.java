@@ -12,7 +12,7 @@ public class NightOperationRule implements FraudRule {
     @Override
     public Optional<RiskRuleResultDraft> evaluate(Transaction transaction) {
         int hour = transaction.getCreatedAt().getHour();
-        if (hour >= 0 && hour < 6) {
+        if (hour < 6) {
             return Optional.of(new RiskRuleResultDraft(
                     "NIGHT_OPERATION",
                     20,

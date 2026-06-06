@@ -1,6 +1,7 @@
 package ru.fraudcore.transactions.repository;
 
 import org.springframework.data.jpa.domain.Specification;
+import ru.fraudcore.transactions.entity.RiskLevel;
 import ru.fraudcore.transactions.entity.Transaction;
 import ru.fraudcore.transactions.entity.TransactionStatus;
 import ru.fraudcore.transactions.entity.TransactionType;
@@ -27,6 +28,10 @@ public final class TransactionSpecifications {
 
     public static Specification<Transaction> typeEquals(TransactionType type) {
         return (root, query, cb) -> type == null ? null : cb.equal(root.get("type"), type);
+    }
+
+    public static Specification<Transaction> riskLevelEquals(RiskLevel riskLevel) {
+        return (root, query, cb) -> riskLevel == null ? null : cb.equal(root.get("riskLevel"), riskLevel);
     }
 
     public static Specification<Transaction> createdAtFrom(LocalDateTime dateFrom) {
