@@ -2,8 +2,13 @@ package ru.fraudcore.cases.controller;
 
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import ru.fraudcore.cases.dto.FraudCaseDecisionRequest;
 import ru.fraudcore.cases.dto.FraudCaseDecisionResponse;
@@ -19,6 +24,7 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/api/v1/cases")
 @RequiredArgsConstructor
+@Validated
 public class FraudCaseController {
 
     private final FraudCaseService fraudCaseService;
@@ -45,25 +51,25 @@ public class FraudCaseController {
                             allowableValues = {"asc", "desc"}
                     )
             )
-            @RequestParam(defaultValue = "desc") String sortDirection,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "desc") @Pattern(regexp = "(?i)asc|desc") String sortDirection,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return fraudCaseService.findAll(status, riskLevel, assignedToMe, dateFrom, dateTo, sortBy, sortDirection, page, size);
     }
 
     @GetMapping("/{id}")
-    public FraudCaseResponse getById(@PathVariable Long id) {
+    public FraudCaseResponse getById(@PathVariable @Positive Long id) {
         return fraudCaseService.getById(id);
     }
 
     @PostMapping("/{id}/assign-to-me")
-    public FraudCaseResponse assignToMe(@PathVariable Long id) {
+    public FraudCaseResponse assignToMe(@PathVariable @Positive Long id) {
         return fraudCaseService.assignToMe(id);
     }
 
     @PostMapping("/{id}/decision")
-    public FraudCaseDecisionResponse decision(@PathVariable Long id, @Valid @RequestBody FraudCaseDecisionRequest request) {
+    public FraudCaseDecisionResponse decision(@PathVariable @Positive Long id, @Valid @RequestBody FraudCaseDecisionRequest request) {
         return fraudCaseService.makeDecision(id, request);
     }
 }

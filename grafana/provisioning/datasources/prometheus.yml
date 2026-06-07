@@ -1,0 +1,12 @@
+# noinspection YAMLSchemaValidation
+apiVersion: 1
+
+# noinspection YAMLSchemaValidation
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: fraudcore-prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

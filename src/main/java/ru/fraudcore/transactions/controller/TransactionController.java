@@ -2,8 +2,14 @@ package ru.fraudcore.transactions.controller;
 
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import ru.fraudcore.common.response.PageResponse;
 import ru.fraudcore.transactions.dto.CreateTransactionRequest;
@@ -21,6 +27,7 @@ import java.time.LocalDateTime;
 @RestController
 @RequestMapping("/api/v1/transactions")
 @RequiredArgsConstructor
+@Validated
 public class TransactionController {
 
     private final TransactionService transactionService;
@@ -31,7 +38,7 @@ public class TransactionController {
     }
 
     @GetMapping("/{id}")
-    public TransactionResponse getById(@PathVariable Long id) {
+    public TransactionResponse getById(@PathVariable @Positive Long id) {
         return transactionService.getById(id);
     }
 
@@ -44,8 +51,8 @@ public class TransactionController {
             @RequestParam(required = false) RiskLevel riskLevel,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dateTo,
-            @RequestParam(required = false) BigDecimal minAmount,
-            @RequestParam(required = false) BigDecimal maxAmount,
+            @RequestParam(required = false) @PositiveOrZero BigDecimal minAmount,
+            @RequestParam(required = false) @PositiveOrZero BigDecimal maxAmount,
             @Parameter(
                     description = "Поле сортировки. riskLevel сортируется по числовому riskScore",
                     example = "createdAt",
@@ -61,9 +68,9 @@ public class TransactionController {
                             allowableValues = {"asc", "desc"}
                     )
             )
-            @RequestParam(defaultValue = "desc") String sortDirection,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "desc") @Pattern(regexp = "(?i)asc|desc") String sortDirection,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
     ) {
         return transactionService.findAll(
                 clientId,
@@ -83,7 +90,7 @@ public class TransactionController {
     }
 
     @GetMapping("/{id}/risk-explanation")
-    public RiskExplanationResponse getRiskExplanation(@PathVariable Long id) {
+    public RiskExplanationResponse getRiskExplanation(@PathVariable @Positive Long id) {
         return transactionService.getRiskExplanation(id);
     }
 }

@@ -9,9 +9,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -41,6 +46,66 @@ public class GlobalExceptionHandler {
                 .map(cv -> ApiErrorDetail.builder().field(cv.getPropertyPath().toString()).message(cv.getMessage()).build())
                 .toList();
         return build(HttpStatus.BAD_REQUEST, "Ошибка валидации", request.getRequestURI(), details);
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleArgumentTypeMismatch(
+            MethodArgumentTypeMismatchException exception,
+            HttpServletRequest request
+    ) {
+        ApiErrorDetail detail = ApiErrorDetail.builder()
+                .field(exception.getName())
+                .message("Invalid value: " + exception.getValue())
+                .build();
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "Invalid request parameter",
+                request.getRequestURI(),
+                List.of(detail)
+        );
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnreadableMessage(
+            HttpMessageNotReadableException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "Некорректный JSON или формат значения",
+                request.getRequestURI(),
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingRequestParameter(
+            MissingServletRequestParameterException exception,
+            HttpServletRequest request
+    ) {
+        ApiErrorDetail detail = ApiErrorDetail.builder()
+                .field(exception.getParameterName())
+                .message("Обязательный параметр не передан")
+                .build();
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "Отсутствует обязательный параметр",
+                request.getRequestURI(),
+                List.of(detail)
+        );
+    }
+
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodValidation(
+            HandlerMethodValidationException exception,
+            HttpServletRequest request
+    ) {
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "Ошибка валидации параметров запроса",
+                request.getRequestURI(),
+                List.of()
+        );
     }
 
     @ExceptionHandler(BadRequestException.class)
@@ -80,6 +145,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleOther(Exception exception, HttpServletRequest request) {
+        if (exception instanceof ErrorResponse errorResponse) {
+            HttpStatus status = HttpStatus.resolve(errorResponse.getStatusCode().value());
+            if (status != null) {
+                return build(status, errorResponse.getBody().getDetail(), request.getRequestURI(), List.of());
+            }
+        }
         log.error("Unhandled exception for {}", request.getRequestURI(), exception);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Непредвиденная ошибка сервера", request.getRequestURI(), List.of());
     }

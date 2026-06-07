@@ -10,6 +10,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import ru.fraudcore.audit.service.AuditService;
+import ru.fraudcore.common.exception.BadRequestException;
 import ru.fraudcore.common.transaction.AfterCommitExecutor;
 import ru.fraudcore.kafka.producer.TransactionCreatedEventProducer;
 import ru.fraudcore.metrics.service.FraudMetricsService;
@@ -26,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -107,6 +109,33 @@ class TransactionServiceTest {
         verify(transactionRepository).findAll(anyTransactionSpecification(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getSort().getOrderFor("riskScore")).isNotNull();
         assertThat(pageableCaptor.getValue().getSort().getOrderFor("riskLevel")).isNull();
+    }
+
+    @Test
+    void shouldRejectInvalidFilterRanges() {
+        TransactionService service = new TransactionService(
+                transactionRepository,
+                mapper,
+                eventProducer,
+                auditService,
+                riskRuleResultRepository,
+                metricsService,
+                new AfterCommitExecutor()
+        );
+
+        assertThatThrownBy(() -> service.findAll(
+                null, null, null, null, null,
+                LocalDateTime.of(2026, 6, 8, 0, 0),
+                LocalDateTime.of(2026, 6, 7, 0, 0),
+                null, null, "createdAt", "desc", 0, 20
+        )).isInstanceOf(BadRequestException.class);
+
+        assertThatThrownBy(() -> service.findAll(
+                null, null, null, null, null,
+                null, null,
+                new BigDecimal("100"), new BigDecimal("10"),
+                "createdAt", "desc", 0, 20
+        )).isInstanceOf(BadRequestException.class);
     }
 
     private Specification<Transaction> anyTransactionSpecification() {

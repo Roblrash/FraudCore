@@ -96,6 +96,10 @@ public class FraudCaseService {
             int page,
             int size
     ) {
+        if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+            throw new BadRequestException("dateFrom не может быть позже dateTo");
+        }
+
         Long analystId = Boolean.TRUE.equals(assignedToMe) ? userService.getCurrentUserEntity().getId() : null;
 
         String resolvedSortBy = resolveSortBy(sortBy);

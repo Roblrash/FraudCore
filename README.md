@@ -290,11 +290,3 @@ curl -X POST http://localhost:8080/api/v1/transactions \
 4. Проверьте финальный статус `APPROVED` или `TEMPORARILY_BLOCKED`.
 5. Для blocked-транзакции проверьте создание кейса в `GET /api/v1/cases`.
 6. В логах приложения проверьте publish/consume событий.
-
-## 21. Что можно улучшить
-
-- Outbox pattern для гарантированной доставки событий.
-- Retry/DLT policy для Kafka consumer.
-- Расширенные fraud rules и конфигурация rule weights из БД.
-- Fine-grained observability dashboards в Grafana.
-- Нагрузочное тестирование и профили производительности.

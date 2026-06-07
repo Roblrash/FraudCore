@@ -119,6 +119,13 @@ public class TransactionService {
             int page,
             int size
     ) {
+        if (dateFrom != null && dateTo != null && dateFrom.isAfter(dateTo)) {
+            throw new BadRequestException("dateFrom не может быть позже dateTo");
+        }
+        if (minAmount != null && maxAmount != null && minAmount.compareTo(maxAmount) > 0) {
+            throw new BadRequestException("minAmount не может быть больше maxAmount");
+        }
+
         String resolvedSortBy = resolveSortBy(sortBy);
         Sort sort = Sort.by("desc".equalsIgnoreCase(sortDirection) ? Sort.Direction.DESC : Sort.Direction.ASC, resolvedSortBy);
         Pageable pageable = PageRequest.of(page, size, sort);

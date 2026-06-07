@@ -1,0 +1,12 @@
+apiVersion: 1
+
+providers:
+  - name: FraudCore
+    orgId: 1
+    folder: FraudCore
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards

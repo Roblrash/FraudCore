@@ -14,6 +14,7 @@ import ru.fraudcore.cases.entity.FraudCaseDecision;
 import ru.fraudcore.cases.entity.FraudCaseStatus;
 import ru.fraudcore.cases.mapper.FraudCaseMapper;
 import ru.fraudcore.cases.repository.FraudCaseRepository;
+import ru.fraudcore.common.exception.BadRequestException;
 import ru.fraudcore.common.transaction.AfterCommitExecutor;
 import ru.fraudcore.kafka.producer.FraudCaseClosedEventProducer;
 import ru.fraudcore.metrics.service.FraudMetricsService;
@@ -30,6 +31,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -110,6 +112,23 @@ class FraudCaseServiceTest {
         verify(fraudCaseRepository).findAll(anyFraudCaseSpecification(), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getSort().getOrderFor("riskScore")).isNotNull();
         assertThat(pageableCaptor.getValue().getSort().getOrderFor("riskLevel")).isNull();
+    }
+
+    @Test
+    void shouldRejectInvalidDateRange() {
+        FraudCaseService service = buildService();
+
+        assertThatThrownBy(() -> service.findAll(
+                null,
+                null,
+                false,
+                LocalDateTime.of(2026, 6, 8, 0, 0),
+                LocalDateTime.of(2026, 6, 7, 0, 0),
+                "createdAt",
+                "desc",
+                0,
+                20
+        )).isInstanceOf(BadRequestException.class);
     }
 
     private FraudCaseService buildService() {
